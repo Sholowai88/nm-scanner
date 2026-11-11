@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NM Source Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; text-align: center; padding: 20px; background: #f0f6f7; margin: 0; }
+        #reader { width: 100%; max-width: 500px; margin: 0 auto; }
+        .status { margin-top: 20px; font-weight: bold; color: #0d7377; font-size: 16px; }
+        .error { color: #dc3545; }
+        button { padding: 16px 32px; font-size: 18px; background: #0d7377; color: white; border: none; border-radius: 12px; margin-top: 20px; font-weight: 600; width: 100%; max-width: 300px; }
+    </style>
+</head>
+<body>
+    <h2>Scan Source Barcode</h2>
+    <div id="reader"></div>
+    <div id="status" class="status">Tap the button below to open the camera</div>
+    <button onclick="startScanner()">📷 Start Camera</button>
+
+    <script>
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxMpbhm7o-tfIreop1l0YmF3EMT5XFsCyEPwONSJOTAYyT6VJu5npl3ZV70BQMAGaDa-A/exec
+'; // <--- Replace here
+        let html5QrCode = null;
+
+        function startScanner() {
+            document.getElementById('status').innerText = 'Initializing camera...';
+            document.getElementById('status').className = 'status';
+
+            if (html5QrCode) {
+                html5QrCode.clear();
+            }
+
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess
+            ).catch(err => {
+                document.getElementById('status').innerText = 'Camera Error: ' + err;
+                document.getElementById('status').className = 'status error';
+            });
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            html5QrCode.stop().then(() => {
+                document.getElementById('status').innerText = 'Barcode detected: ' + decodedText + '. Sending...';
+                
+                fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'barcode=' + encodeURIComponent(decodedText)
+                }).finally(() => {
+                    // Redirect back to your main Apps Script app with the scanned code
+                    window.location.href = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE?scanned=' + encodeURIComponent(decodedText);
+                });
+            }).catch(err => {
+                console.error('Failed to stop scanner', err);
+            });
+        }
+    </script>
+</body>
+</html>
