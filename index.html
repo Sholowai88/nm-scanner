@@ -20,25 +20,18 @@
     <button id="startBtn">📷 Start Camera</button>
 
     <script>
-        // ⚠️ Confirm this is your actual Apps Script Web App URL
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxMpbhm7o-tfIreop1l0YmF3EMT5XFsCyEPwONSJOTAYyT6VJu5npl3ZV70BQMAGaDa-A/exec';
-        
+        // --- read the origin passed by the inventory app (optional, for logging) ---
+        const params = new URLSearchParams(window.location.search);
+        const PARENT_ORIGIN = params.get('origin') || '*';
+
         let html5QrCode = null;
 
         document.getElementById('startBtn').addEventListener('click', function() {
-            // Directly execute within user gesture, avoid async delays
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader");
-            }
-            
+            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
             document.getElementById('status').innerText = 'Initializing camera...';
             document.getElementById('status').className = 'status';
 
-            const config = { 
-                fps: 10, 
-                qrbox: { width: 250, height: 250 },
-                // iOS suggestions: avoid high fps, use object format for qrbox
-            };
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
             html5QrCode.start(
                 { facingMode: "environment" },
@@ -47,27 +40,40 @@
             ).catch(err => {
                 document.getElementById('status').innerText = 'Camera Error: ' + err;
                 document.getElementById('status').className = 'status error';
-                // If it's a permission issue, prompt user to check settings
-                if (err.includes('NotAllowedError') || err.includes('Permission')) {
-                    document.getElementById('status').innerText += ' Please check Safari camera permissions for this site.';
-                }
             });
         });
 
         function onScanSuccess(decodedText) {
             html5QrCode.stop().then(() => {
-                document.getElementById('status').innerText = 'Barcode detected: ' + decodedText + '. Sending...';
-                
-                // Send to Apps Script
-                fetch(APPS_SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'barcode=' + encodeURIComponent(decodedText)
-                }).finally(() => {
-                    // ✅ Fixed: Redirect back to main app with scanned code
-                    window.location.href = APPS_SCRIPT_URL + '?scanned=' + encodeURIComponent(decodedText);
-                });
+                document.getElementById('status').innerText = 'Barcode detected: ' + decodedText + '. Returning to app...';
+
+                // 1) Try postMessage to the opener tab (same-tab-session, no reload)
+                let sent = false;
+                try {
+                    if (window.opener && !window.opener.closed) {
+                        window.opener.postMessage(
+                            { type: 'NM_BARCODE', code: decodedText },
+                            PARENT_ORIGIN
+                        );
+                        sent = true;
+                    }
+                } catch (e) { /* opener blocked */ }
+
+                // 2) Fallback for iOS when window.opener is null: write to localStorage.
+                //    The inventory tab listens to 'focus' and reads it.
+                try {
+                    localStorage.setItem('NM_SCANNED_CODE', decodedText);
+                } catch (e) { /* storage blocked */ }
+
+                // 3) Close this tab if we were opened as a popup; otherwise show a message.
+                setTimeout(() => {
+                    if (window.opener) {
+                        window.close();
+                    } else {
+                        document.getElementById('status').innerText =
+                            'Scanned: ' + decodedText + '. Please return to the app tab.';
+                    }
+                }, 300);
             }).catch(err => {
                 console.error('Failed to stop scanner', err);
             });
