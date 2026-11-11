@@ -17,23 +17,28 @@
     <h2>Scan Source Barcode</h2>
     <div id="reader"></div>
     <div id="status" class="status">Tap the button below to open the camera</div>
-    <button onclick="startScanner()">📷 Start Camera</button>
+    <button id="startBtn">📷 Start Camera</button>
 
     <script>
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxMpbhm7o-tfIreop1l0YmF3EMT5XFsCyEPwONSJOTAYyT6VJu5npl3ZV70BQMAGaDa-A/exec
-'; // <--- Replace here
+        // ⚠️ Confirm this is your actual Apps Script Web App URL
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxMpbhm7o-tfIreop1l0YmF3EMT5XFsCyEPwONSJOTAYyT6VJu5npl3ZV70BQMAGaDa-A/exec';
+        
         let html5QrCode = null;
 
-        function startScanner() {
+        document.getElementById('startBtn').addEventListener('click', function() {
+            // Directly execute within user gesture, avoid async delays
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+            
             document.getElementById('status').innerText = 'Initializing camera...';
             document.getElementById('status').className = 'status';
 
-            if (html5QrCode) {
-                html5QrCode.clear();
-            }
-
-            html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            const config = { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                // iOS suggestions: avoid high fps, use object format for qrbox
+            };
 
             html5QrCode.start(
                 { facingMode: "environment" },
@@ -42,21 +47,26 @@
             ).catch(err => {
                 document.getElementById('status').innerText = 'Camera Error: ' + err;
                 document.getElementById('status').className = 'status error';
+                // If it's a permission issue, prompt user to check settings
+                if (err.includes('NotAllowedError') || err.includes('Permission')) {
+                    document.getElementById('status').innerText += ' Please check Safari camera permissions for this site.';
+                }
             });
-        }
+        });
 
-        function onScanSuccess(decodedText, decodedResult) {
+        function onScanSuccess(decodedText) {
             html5QrCode.stop().then(() => {
                 document.getElementById('status').innerText = 'Barcode detected: ' + decodedText + '. Sending...';
                 
+                // Send to Apps Script
                 fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: 'barcode=' + encodeURIComponent(decodedText)
                 }).finally(() => {
-                    // Redirect back to your main Apps Script app with the scanned code
-                    window.location.href = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE?scanned=' + encodeURIComponent(decodedText);
+                    // ✅ Fixed: Redirect back to main app with scanned code
+                    window.location.href = APPS_SCRIPT_URL + '?scanned=' + encodeURIComponent(decodedText);
                 });
             }).catch(err => {
                 console.error('Failed to stop scanner', err);
